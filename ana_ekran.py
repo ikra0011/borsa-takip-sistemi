@@ -114,5 +114,7 @@ else:
         else:
             st.info("Portföyün henüz boş. Sol menüden ilk işlemini ekle!")
 
-    except Exception:
+    except Exception as e:
+        st.error(f"Veri çekilemiyor. Hisse kodunu kontrol edin.")
+
 
