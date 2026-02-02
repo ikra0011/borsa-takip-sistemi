@@ -114,4 +114,5 @@ else:
         else:
             st.info("Portföyün henüz boş. Sol menüden ilk işlemini ekle!")
 
-    except Exception
+    except Exception:
+
