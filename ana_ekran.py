@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 import hashlib
 
-# 1. TEMEL AYARLAR (HATA KORUMALI)
+# 1. AYARLAR
 st.set_page_config(page_title="Midas AI Terminal", layout="wide")
 
 def make_hashes(password):
@@ -18,10 +18,10 @@ USER_DB = "users.csv"
 if not os.path.exists(USER_DB):
     pd.DataFrame(columns=["username", "password"]).to_csv(USER_DB, index=False)
 
-# 2. OTURUM YÖNETİMİ
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 
+# 2. GİRİŞ SİSTEMİ
 if not st.session_state["logged_in"]:
     st.title("🔐 Midas Cloud Giriş")
     tab1, tab2 = st.tabs(["Giriş", "Kayıt"])
@@ -34,7 +34,6 @@ if not st.session_state["logged_in"]:
                 if u not in df_u['username'].values.astype(str):
                     pd.DataFrame([[u, make_hashes(p)]], columns=["username", "password"]).to_csv(USER_DB, mode='a', header=False, index=False)
                     st.success("Hesap oluşturuldu, Giriş sekmesine tıkla!")
-                else: st.error("Bu kullanıcı adı alınmış.")
     with tab1:
         u_log = st.text_input("Kullanıcı Adı", key="log_u")
         p_log = st.text_input("Şifre", type='password', key="log_p")
@@ -46,18 +45,18 @@ if not st.session_state["logged_in"]:
                     st.session_state["logged_in"] = True
                     st.session_state["user"] = u_log
                     st.rerun()
-                else: st.error("Hatalı giriş!")
+                else: st.error("Hatalı!")
             except: st.error("Giriş yapılamadı.")
 
-# 3. ANA PANEL (GİRİŞ YAPILDIYSA)
+# 3. ANA PANEL
 else:
     p_file = f"portfoy_{st.session_state['user']}.csv"
     if not os.path.exists(p_file):
         pd.DataFrame(columns=["Tarih", "Hisse", "Adet", "Maliyet"]).to_csv(p_file, index=False)
 
     with st.sidebar:
-        st.write(f"👤 Kullanıcı: {st.session_state['user']}")
-        h_kod = st.text_input("Hisse (Örn: MSFT)", "MSFT").upper()
+        st.write(f"👤 {st.session_state['user']}")
+        h_kod = st.text_input("Hisse Kodu", "MSFT").upper()
         h_adet = st.number_input("Adet", min_value=0.0, step=0.001)
         h_maliyet = st.number_input("Birim Fiyat ($)", min_value=0.0)
         
@@ -65,7 +64,6 @@ else:
             if h_adet > 0:
                 yeni_veri = pd.DataFrame([[datetime.now().strftime("%Y-%m-%d"), h_kod, h_adet, h_maliyet]], columns=["Tarih", "Hisse", "Adet", "Maliyet"])
                 yeni_veri.to_csv(p_file, mode='a', header=False, index=False)
-                st.balloons()
                 st.rerun()
         
         if st.button("Güvenli Çıkış"):
@@ -74,47 +72,40 @@ else:
 
     st.title("🛡️ Yatırım Takip Terminali")
     
-    # VERİ ÇEKME (EN GÜVENLİ HALE GETİRİLDİ)
     try:
-        # Yahoo Finance verilerini çek
-        h_fiyat, d_kur = 0.0, 30.0 # Varsayılan değerler
-        
+        # VERİ ÇEKME
         ticker = yf.Ticker(h_kod)
-        h_hist = ticker.history(period="1d")
-        if not h_hist.empty:
-            h_fiyat = h_hist['Close'].iloc[-1]
-            
+        # 1 aylık veri çekmeyi dene
+        h_chart = ticker.history(period="1mo")
         dolar_hist = yf.Ticker("USDTRY=X").history(period="1d")
-        if not dolar_hist.empty:
-            d_kur = dolar_hist['Close'].iloc[-1]
         
-        # Göstergeler
-        c1, c2, c3 = st.columns(3)
-        c1.metric(f"{h_kod} Fiyat", f"${round(h_fiyat, 2)}")
-        c2.metric("USD/TRY Kuru", f"₺{round(d_kur, 2)}")
-        
-        # Portföy Hesaplama
-        df_p = pd.read_csv(p_file)
-        if not df_p.empty:
-            hisse_ozel = df_p[df_p['Hisse'] == h_kod]
-            if not hisse_ozel.empty:
-                toplam_adet = hisse_ozel['Adet'].sum()
-                deger_tl = toplam_adet * h_fiyat * d_kur
-                c3.metric("Senin Varlığın (TL)", f"₺{round(deger_tl, 2)}")
+        if not h_chart.empty:
+            current_price = h_chart['Close'].iloc[-1]
+            d_kur = dolar_hist['Close'].iloc[-1] if not dolar_hist.empty else 30.0
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric(f"{h_kod} Fiyat", f"${round(current_price, 2)}")
+            c2.metric("USD/TRY Kuru", f"₺{round(d_kur, 2)}")
+            
+            df_p = pd.read_csv(p_file)
+            if not df_p.empty:
+                h_ozel = df_p[df_p['Hisse'] == h_kod]
+                if not h_ozel.empty:
+                    t_adet = h_ozel['Adet'].sum()
+                    v_tl = t_adet * current_price * d_kur
+                    c3.metric("Senin Varlığın (TL)", f"₺{round(v_tl, 2)}")
+            
+            # İŞTE O GRAFİK KISMI
+            st.subheader(f"📈 {h_kod} 1 Aylık Performans")
+            # Sadece Kapanış fiyatlarını içeren temiz bir grafik verisi
+            chart_data = h_chart[['Close']]
+            st.line_chart(chart_data)
             
             st.divider()
-            st.subheader("📜 İşlem Geçmişi")
+            st.subheader("📜 Tüm İşlemlerin")
             st.dataframe(df_p, use_container_width=True)
-            
-            # Grafik (Hata korumalı)
-            st.subheader(f"📈 {h_kod} Seyir")
-            h_chart = ticker.history(period="1mo")
-            if not h_chart.empty:
-                st.line_chart(h_chart['Close'])
         else:
-            st.info("Portföyün henüz boş. Sol menüden ilk işlemini ekle!")
+            st.error(f"{h_kod} için veri çekilemedi. Kodun doğruluğundan emin olun.")
 
     except Exception as e:
-        st.error(f"Veri çekilemiyor. Hisse kodunu kontrol edin.")
-
-
+        st.error(f"Bir hata oluştu: {e}")
